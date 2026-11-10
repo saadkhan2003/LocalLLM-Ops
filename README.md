@@ -90,13 +90,13 @@ Self-hosted, at a measured throughput:
 cost_per_1k = gpu_usd_per_hour / requests_per_second / 3600 * 1000
 ```
 
-OpenRouter, from token counts on the response:
+OpenRouter, from the usage object on the response. `usage.cost` is the number that goes in the CSV. If that field is missing, the script sums `usage.cost_details` entries whose keys contain `cost`. The token price table is only the fallback, and the CSV records `cost_source`.
 
 ```text
 cost = input_tokens / 1e6 * input_usd_per_million + output_tokens / 1e6 * output_usd_per_million
 ```
 
-Default list prices, checked 10 Nov 2026 for `openai/gpt-4o-mini`: $0.15 / 1M input tokens and $0.60 / 1M output tokens. Override with `OPENROUTER_INPUT_USD_PER_MILLION` and `OPENROUTER_OUTPUT_USD_PER_MILLION` if the price page has moved. The break-even rate is the throughput where the two formulas match. Fill it only from a measured requests/s and the GPU price you actually paid.
+Default list prices, checked 10 Nov 2026 for `openai/gpt-4o-mini`: $0.15 / 1M input tokens and $0.60 / 1M output tokens. Override with `OPENROUTER_INPUT_USD_PER_MILLION` and `OPENROUTER_OUTPUT_USD_PER_MILLION` if the price page has moved. The break-even rate is the throughput where the two formulas match. Fill it only from a measured requests/s and the GPU price you actually paid. Commands for the budgeted baseline are in `BASELINE_RUN.md`.
 
 ## How to run locally
 
@@ -115,7 +115,7 @@ Gateway: [http://127.0.0.1:8747](http://127.0.0.1:8747). Auth is off until `GATE
 |---|---|---|
 | `make ci` | ruff, pytest, 20-example mock eval, 20-example tiny eval | CPU |
 | `make data-small` | stream 200 Spider train rows and 200 validation rows | network |
-| `make data` | stream the full 7,000 / 1,034 splits | network |
+| `make data` | full splits plus official SQLite (`--download-sqlite --require-sqlite`) | network |
 | `make train-dry` | validate the T4 QLoRA config and write a manifest | CPU |
 | `make serve` | FastAPI gateway and the demo page | CPU |
 | `make loadtest` | short Locust run against the gateway | CPU, server up |
@@ -123,7 +123,7 @@ Gateway: [http://127.0.0.1:8747](http://127.0.0.1:8747). Auth is off until `GATE
 
 GPU training, quantization, vLLM, and the paid baseline are in `RUNBOOK.md`. They are not part of `make ci`.
 
-Spider questions come from `xlangai/spider` (CC BY-SA 4.0): 7,000 train and 1,034 validation. The validation split is the test set and is never trained on. Five percent of train is held out as `val` (6,650 / 350 when the train split is 7,000). The SQLite files are not in the Hugging Face dataset. Download them from the official [Spider page](https://yale-lily.github.io/spider) before you report execution accuracy. Prep can still build prompts from a public schema mirror; `manifest.json` lists databases that have no `.sqlite` file.
+Spider questions come from `xlangai/spider` (CC BY-SA 4.0): 7,000 train and 1,034 validation. The validation split is the test set and is never trained on. Five percent of train is held out as `val` (6,650 / 350 when the train split is 7,000). `make data` downloads the official SQLite zip from the [Spider page](https://yale-lily.github.io/spider) into `data/spider/database/` and exits if any `db_id` has no file. That directory is gitignored. `make data-small` still builds prompts only.
 
 ## Design decisions
 

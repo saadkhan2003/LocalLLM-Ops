@@ -12,7 +12,7 @@ help:
 	@echo "  make smoke-eval      CPU eval on the 20-example fixture (mock + tiny)"
 	@echo "  make ci              lint + test + smoke-eval"
 	@echo "  make data-small      stream a 200-row Spider subset (network, no GPU)"
-	@echo "  make data            stream the full Spider splits (network, no GPU)"
+	@echo "  make data            full Spider splits plus official SQLite (--require-sqlite)"
 	@echo "  make train-dry       validate a train config without loading a model"
 	@echo "  make serve           gateway on port $(PORT)"
 	@echo "  make loadtest        short Locust run against LOCUST_HOST or localhost:$(PORT)"
@@ -35,8 +35,10 @@ smoke-eval:
 
 ci: lint test smoke-eval
 
+# GNU make rejects an unknown flag, so `make data` is the full run:
+# it downloads spider_data.zip and passes --require-sqlite.
 data:
-	$(UV) run python -m localllm.data.prep_spider --out data/spider
+	$(UV) run python -m localllm.data.prep_spider --out data/spider --download-sqlite --require-sqlite
 
 data-small:
 	$(UV) run python -m localllm.data.prep_spider --out data/spider_small --limit 200

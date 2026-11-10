@@ -110,10 +110,24 @@ def execute_sql(db_path: Path | str, sql: str, timeout_s: float = DEFAULT_TIMEOU
         conn.close()
 
 
+def _usable_sqlite(path: Path) -> bool:
+    if path.name.startswith("._"):
+        return False
+    try:
+        with path.open("rb") as handle:
+            return handle.read(16).startswith(b"SQLite format 3")
+    except OSError:
+        return False
+
+
 def sqlite_files(db_path: Path | str) -> list[Path]:
     path = Path(db_path)
     folder = path.parent if path.is_file() else path
-    files = sorted(item for item in folder.iterdir() if item.suffix == ".sqlite" and item.is_file())
+    files = sorted(
+        item
+        for item in folder.iterdir()
+        if item.suffix == ".sqlite" and item.is_file() and _usable_sqlite(item)
+    )
     if not files and path.is_file():
         return [path]
     return files

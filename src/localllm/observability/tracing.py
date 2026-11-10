@@ -47,6 +47,11 @@ class LangfuseTracer:
             },
         )
 
+    def flush(self) -> None:
+        flush = getattr(self.client, "flush", None)
+        if flush:
+            flush()
+
 
 def build_tracer() -> NullTracer | LangfuseTracer:
     public = os.environ.get("LANGFUSE_PUBLIC_KEY")

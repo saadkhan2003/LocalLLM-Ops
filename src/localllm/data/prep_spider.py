@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -66,8 +68,7 @@ def iter_hf_split(
             f"{HF_ROWS_URL}?dataset={HF_DATASET}&config={HF_CONFIG}"
             f"&split={split}&offset={offset}&length={length}"
         )
-        with opener(query, timeout=60) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        payload = _read_json(query, opener)
         rows = payload.get("rows") or []
         if not rows:
             return
@@ -79,6 +80,18 @@ def iter_hf_split(
         offset += len(rows)
         if len(rows) < length:
             return
+
+
+def _read_json(url: str, opener, attempts: int = 5) -> dict:
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with opener(url, timeout=60) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+            time.sleep(min(2**attempt, 16))
+    raise RuntimeError(f"failed to read {url}") from last_error
 
 
 def load_schema_map(path: Path) -> dict[str, str]:
@@ -154,10 +167,19 @@ def prepare(
     schema_path: Path | None = None,
     max_schema_chars: int = 6000,
     require_sqlite: bool = False,
+    download_sqlite: bool = False,
     fetch_split=None,
     schema_map: dict[str, str] | None = None,
 ) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
+    db_dir = database_dir or (out_dir / "database")
+    if download_sqlite:
+        from localllm.data.spider_sqlite import ensure_spider_databases
+
+        ensure_spider_databases(db_dir)
+        tables_json = out_dir / "tables.json"
+        if schema_path is None and tables_json.exists():
+            schema_path = tables_json
     fetch_split = fetch_split or iter_hf_split
     if schema_map is None:
         if schema_path is None:
@@ -167,11 +189,11 @@ def prepare(
         schema_map = load_schema_map(schema_path)
 
     train_rows = [
-        example_from_row(row, schema_map, database_dir, max_schema_chars)
+        example_from_row(row, schema_map, db_dir, max_schema_chars)
         for row in fetch_split("train", limit)
     ]
     test_rows = [
-        example_from_row(row, schema_map, database_dir, max_schema_chars)
+        example_from_row(row, schema_map, db_dir, max_schema_chars)
         for row in fetch_split("validation", limit)
     ]
     train_split, val_split = split_train_val(train_rows, seed=seed)
@@ -180,7 +202,6 @@ def prepare(
         "val": write_jsonl(out_dir / "val.jsonl", val_split),
         "test": write_jsonl(out_dir / "test.jsonl", test_rows),
     }
-    db_dir = database_dir or (out_dir / "database")
     missing = missing_databases(train_rows + test_rows, db_dir) if db_dir.exists() else sorted(
         {row["db_id"] for row in train_rows + test_rows}
     )
@@ -224,8 +245,20 @@ def main() -> None:
     parser.add_argument("--database-dir", type=Path, default=None)
     parser.add_argument("--schema", type=Path, default=None, help="tables.json or schema mirror.")
     parser.add_argument("--max-schema-chars", type=int, default=6000)
-    parser.add_argument("--require-sqlite", action="store_true")
+    parser.add_argument(
+        "--download-sqlite",
+        action="store_true",
+        help="Download the official Spider zip when database files are missing.",
+    )
+    parser.add_argument(
+        "--require-sqlite",
+        action="store_true",
+        help="Exit if any db_id has no SQLite file. Also downloads the official zip when needed.",
+    )
     args = parser.parse_args()
+    # --require-sqlite with no explicit database directory fetches the official zip.
+    # An explicit --database-dir is checked as-is so a fixture is not overwritten.
+    download = args.download_sqlite or (args.require_sqlite and args.database_dir is None)
     prepare(
         args.out,
         limit=args.limit,
@@ -234,6 +267,7 @@ def main() -> None:
         schema_path=args.schema,
         max_schema_chars=args.max_schema_chars,
         require_sqlite=args.require_sqlite,
+        download_sqlite=download,
     )
 
 

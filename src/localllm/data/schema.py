@@ -179,7 +179,9 @@ def resolve_sqlite(database_dir: Path | str, db_id: str) -> Path | None:
             return path
     folder = root / db_id
     if folder.is_dir():
-        found = sorted(folder.glob("*.sqlite"))
+        found = sorted(
+            path for path in folder.glob("*.sqlite") if not path.name.startswith("._")
+        )
         if found:
             return found[0]
     return None

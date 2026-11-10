@@ -42,6 +42,7 @@ cloud = ["modal>=0.73"]
 localllm-prep = "localllm.data.prep_spider:main"
 localllm-train = "localllm.train.sft:main"
 localllm-eval = "localllm.eval.harness:main"
+localllm-baseline = "localllm.eval.baseline:main"
 localllm-gateway = "localllm.gateway.app:main"
 localllm-awq = "localllm.quant.awq:main"
 

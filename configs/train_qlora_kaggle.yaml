@@ -1,0 +1,48 @@
+# Free Kaggle T4, one session, aimed at about 3-4 GPU hours.
+# 6,650 train rows, batch 1, gradient accumulation 16 is about 416 steps
+# per epoch. Two epochs is about 830 steps. max_steps 900 is a ceiling so a
+# slow step time still ends inside four hours. This is a cap, not a measurement.
+model_name: Qwen/Qwen2.5-1.5B-Instruct
+method: qlora
+output_dir: outputs/qlora-kaggle
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+train:
+  learning_rate: 2.0e-4
+  num_train_epochs: 2
+  max_seq_length: 1024
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  bf16: false
+  fp16: true
+  gradient_checkpointing: true
+  logging_steps: 10
+  save_steps: 100
+  eval_steps: 100
+  max_steps: 900
+  seed: 42
+  assistant_only_loss: true
+data:
+  train_jsonl: data/spider/train.jsonl
+  val_jsonl: data/spider/val.jsonl
+  max_train_examples: null
+mlflow:
+  tracking_uri: file:./mlruns
+  experiment_name: localllm-ops-kaggle-t4
+qlora:
+  load_in_4bit: true
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: float16

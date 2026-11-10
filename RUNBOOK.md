@@ -30,29 +30,19 @@ make ci
 
 ## 1. Spider data
 
-Questions stream from Hugging Face. Schemas for prompts can come from a public schema JSON. Execution accuracy needs the official SQLite zip.
+`make data` streams the questions and downloads the official SQLite zip (Google Drive id `1403EGqzIDoHMdQF4c9Bkyl7dZLZ5Wt6J`, linked from https://yale-lily.github.io/spider). GNU make does not accept extra flags, so the recipe itself passes `--download-sqlite --require-sqlite`.
 
 ```bash
 uv sync --extra dev
-make data-small          # 200 rows per HF split, prompts only
-make data                # full train + validation
-```
-
-Official databases (Google Drive id `1403EGqzIDoHMdQF4c9Bkyl7dZLZ5Wt6J`, linked from https://yale-lily.github.io/spider):
-
-```bash
-pip install gdown
-gdown 1403EGqzIDoHMdQF4c9Bkyl7dZLZ5Wt6J -O /tmp/spider.zip
-unzip -q /tmp/spider.zip -d data/spider_official
-# the zip layout varies by release; find the database directory:
-find data/spider_official -name '*.sqlite' | head
+make data
+# same command, if you are not using make:
 uv run python -m localllm.data.prep_spider \
-  --out data/spider \
-  --database-dir data/spider_official/spider/database \
-  --require-sqlite
+  --out data/spider --download-sqlite --require-sqlite
 ```
 
-If `--require-sqlite` exits, point `--database-dir` at the folder that contains `<db_id>/<db_id>.sqlite`. Confirm the manifest counts: train 6650, val 350, test 1034 (±1). The test file must be the HF validation split.
+`data/spider/manifest.json` should show train 6650, val 350, test 1034, and `"sqlite_missing": []`. The test file is the Hugging Face validation split. The zip and the database directory stay in `data/` and are not committed.
+
+`make data-small` is the 200-row prompt-only subset. It does not download SQLite.
 
 Optional tokenizer check, after `uv sync --extra train` (this downloads the tokenizer, not the full model weights if you only load the tokenizer):
 
@@ -65,32 +55,43 @@ The CI tokenizer is whitespace. Re-check that p95 is under 1,024 Qwen tokens bef
 
 ## 2. QLoRA on a free T4 (Kaggle)
 
-1. New notebook, GPU T4 accelerator.
-2. Add `HF_TOKEN` under Add-ons → Secrets.
-3. Upload this repo or `git clone` it.
-4. Run:
+Account: **notsaaadkhan**. The notebook trains. It is not a 50-step smoke. `configs/train_qlora_kaggle.yaml` runs 2 epochs over the full 6,650 train rows (batch 1, gradient accumulation 16, about 416 steps per epoch, about 830 steps). `max_steps: 900` is a ceiling so a slow step still ends inside four hours. That ceiling is not a measured duration. Stop the Kaggle session yourself if the timer passes 4 hours.
+
+Qwen2.5-1.5B-Instruct is public. `HF_TOKEN` is optional. Do not print it.
+
+1. Sign in to https://www.kaggle.com as **notsaaadkhan**.
+2. On your machine, zip the repo without the large or local directories:
 
 ```bash
-pip install -e ".[train]"
-python -m localllm.data.prep_spider --out data/spider_small --limit 200
-python -m localllm.train.sft --config configs/train_qlora_t4.yaml --run --max-steps 50
+git archive --format=zip --output localllm-ops.zip HEAD
 ```
 
-That 50-step file is the smoke. For the real run, copy the config, set `max_steps: -1`, `num_train_epochs: 3`, and `train_jsonl` to the full `data/spider/train.jsonl`. Watch the Kaggle GPU meter. When the run finishes, record wall time and the loss curve from MLflow (`mlruns/` or the manifest in `outputs/qlora-t4/`).
+3. Kaggle → Datasets → New Dataset. Upload `localllm-ops.zip`. Set the title to `localllm-ops`. Set the visibility to Private. Create.
+4. Kaggle → Code → New Notebook.
+5. Right-hand panel → Add Data → Your Datasets → `localllm-ops`.
+6. Notebook options → Accelerator → GPU T4. Internet → On.
+7. Optional: Add-ons → Secrets → add `HF_TOKEN`. Leave it blank if you do not have one.
+8. File → Import Notebook → upload `notebooks/train_kaggle.ipynb` from the zip, or paste that file over the empty notebook.
+9. Run all. The first code cell finds `/kaggle/input/localllm-ops` or `/kaggle/input/datasets/notsaaadkhan/localllm-ops`. The prep cell downloads Spider and asserts train 6650, val 350, test 1034, and an empty `sqlite_missing` list. The last cell runs:
+
+```bash
+python -m localllm.train.sft --config configs/train_qlora_kaggle.yaml --run
+```
+
+10. When it finishes, download `outputs/qlora-kaggle` from the notebook output (Save Version → Output, or the file browser). Record the wall time you saw on the Kaggle meter in `NOTES.md`. Do not invent it.
+
+`configs/train_qlora_t4.yaml` remains the 50-step CPU dry-run config. Do not use it for this session.
 
 Push the adapter only if you want it online:
 
 ```bash
 huggingface-cli login
-# private repo recommended until the model card is honest
-huggingface-cli upload <you>/qwen2.5-1.5b-spider-qlora outputs/qlora-t4
+huggingface-cli upload notsaaadkhan/qwen2.5-1.5b-spider-qlora outputs/qlora-kaggle
 ```
-
-`notebooks/train_kaggle.ipynb` is the same sequence in notebook cells.
 
 ## 3. QLoRA on Colab
 
-Runtime → T4 GPU. `notebooks/train_colab.ipynb` clones the repo and calls the same module. Secrets: `HF_TOKEN`. Same warning: a full 3-epoch run can be longer than a free Colab session. Start with `--max-steps 50`.
+Runtime → T4 GPU. `notebooks/train_colab.ipynb` is the 50-step smoke. For the 2-epoch run, use the Kaggle notebook and `configs/train_qlora_kaggle.yaml`. Secrets: `HF_TOKEN` is optional because the base model is public.
 
 ## 4. Train on Modal (spends credit)
 
@@ -166,26 +167,13 @@ uv run python -m localllm.eval.harness \
 
 Use `--limit 20` the first time. The full 1,034 is the number that goes in the README, and only after you have checked a sample by hand.
 
-GPT-4o-mini:
+OpenRouter baselines (GPT-4o-mini and GPT-5-mini) use `python -m localllm.eval.baseline`. Exact commands, the dollar cap, and Langfuse are in `BASELINE_RUN.md`. The script writes `results/final/quality.csv` and `results/final/cost.csv` from `usage.cost`. Start with `--limit 20` and a small `--max-usd`.
 
-```bash
-export OPENROUTER_API_KEY="..."   # from .env, not from a chat
-uv run python -m localllm.eval.harness \
-  --backend openrouter \
-  --model openai/gpt-4o-mini \
-  --data data/spider/test.jsonl \
-  --database-dir data/spider/database \
-  --temperature 0 \
-  --limit 20 \
-  --run-id gpt4o-mini-dev \
-  --out results
-```
-
-Read `cost_per_1k_usd` in the summary before you remove `--limit`. Copy ten failures:
+Copy ten failures after that run:
 
 ```bash
 uv run python -m localllm.eval.error_analysis \
-  --run results/gpt4o-mini-dev.jsonl \
+  --run results/final/openai-gpt-4o-mini.jsonl \
   --out results/error_analysis.md \
   --limit 10
 ```

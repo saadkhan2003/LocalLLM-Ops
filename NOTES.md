@@ -13,7 +13,7 @@ The official repo's execution metric is: run gold and prediction on every SQLite
 
 ## Why prompts can be built before the SQLite zip exists
 
-`xlangai/spider` on Hugging Face is questions and SQL only (7,000 train, 1,034 validation). Schemas and database files ship in the official zip. Prep streams the questions over HTTP and joins a schema string. When a local `.sqlite` file exists, the schema is read from SQLite (types, primary keys, foreign keys). Otherwise it uses a schema file you pass, or a public schema JSON downloaded on demand. `manifest.json` lists `sqlite_missing`. Execution accuracy is meaningless for those rows, and `--require-sqlite` refuses to finish.
+`xlangai/spider` on Hugging Face is questions and SQL only (7,000 train, 1,034 validation). `make data` downloads the official zip, drops the macOS `._*` sidecars, and lays out `data/spider/database/<db_id>/<db_id>.sqlite`. When that file exists, the schema is read from SQLite. `manifest.json` lists `sqlite_missing`. `--require-sqlite` refuses to finish while any example database is missing.
 
 The 5% validation holdout is shuffled with seed 42 after sorting, so a re-download does not reshuffle. The HF validation split is written to `test.jsonl` and is not concatenated into train.
 

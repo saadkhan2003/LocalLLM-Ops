@@ -16,12 +16,7 @@ from localllm.data.fixtures import materialize_fixture
 from localllm.data.prompts import build_messages, whitespace_tokenize
 from localllm.data.schema import resolve_sqlite
 from localllm.eval.execution import exact_match, execution_match, strip_sql
-from localllm.eval.metrics import (
-    openrouter_cost_usd,
-    self_hosted_cost_usd,
-    summarize,
-    write_summary_csv,
-)
+from localllm.eval.metrics import self_hosted_cost_usd, summarize, write_summary_csv
 from localllm.eval.tiny_model import TinySqlModel
 
 REQUIRED_FIELDS = ("db_id", "schema", "question", "gold_sql")
@@ -36,6 +31,7 @@ class Completion:
     cost_usd: float | None
     model: str
     token_count_method: str
+    cost_source: str = ""
 
 
 class TinyBackend:
@@ -100,6 +96,8 @@ class OpenAICompatibleBackend:
         output_usd_per_million: float | None = None,
         gpu_usd_per_hour: float | None = None,
         name: str = "vllm",
+        reasoning_effort: str | None = None,
+        extra_body: dict | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -110,39 +108,35 @@ class OpenAICompatibleBackend:
         self.output_usd_per_million = output_usd_per_million
         self.gpu_usd_per_hour = gpu_usd_per_hour
         self.name = name
+        self.reasoning_effort = reasoning_effort
+        self.extra_body = extra_body or {}
         self.token_count_method = "api_usage"
 
     def complete(self, messages: list[dict[str, str]]) -> Completion:
         import httpx
 
+        from localllm.eval.openrouter import chat_request_body, resolve_cost
+
         url = self.base_url + "/chat/completions"
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-        }
+        payload = chat_request_body(self.model, messages, self.temperature, self.reasoning_effort)
+        payload.update(self.extra_body)
         started = time.perf_counter()
         response = httpx.post(url, headers=headers, json=payload, timeout=self.timeout_s)
         latency = time.perf_counter() - started
         response.raise_for_status()
         body = response.json()
-        text = body["choices"][0]["message"]["content"]
-        usage = body.get("usage") or {}
-        input_tokens = int(usage.get("prompt_tokens") or 0)
-        output_tokens = int(usage.get("completion_tokens") or 0)
-        cost = None
-        if self.input_usd_per_million is not None and self.output_usd_per_million is not None:
-            cost = openrouter_cost_usd(
-                input_tokens,
-                output_tokens,
-                self.input_usd_per_million,
-                self.output_usd_per_million,
-            )
-        elif self.gpu_usd_per_hour is not None:
+        text = body["choices"][0]["message"]["content"] or ""
+        input_tokens, output_tokens, cost, source = resolve_cost(
+            body.get("usage"),
+            input_usd_per_million=self.input_usd_per_million,
+            output_usd_per_million=self.output_usd_per_million,
+        )
+        if cost is None and self.gpu_usd_per_hour is not None:
             cost = self_hosted_cost_usd(self.gpu_usd_per_hour, latency)
+            source = "gpu_hour"
         return Completion(
             text=text,
             input_tokens=input_tokens,
@@ -150,7 +144,8 @@ class OpenAICompatibleBackend:
             latency_s=latency,
             cost_usd=cost,
             model=self.model,
-            token_count_method="api_usage" if usage else "missing",
+            token_count_method="api_usage" if body.get("usage") else "missing",
+            cost_source=source,
         )
 
 
