@@ -1,0 +1,31 @@
+{
+  "run_id": "ci-tiny",
+  "backend": "tiny",
+  "model": "tiny-keyword-sql",
+  "split": "test",
+  "n": 20,
+  "execution_accuracy": 0.55,
+  "exact_match": 0.55,
+  "invalid_sql_rate": 0.0,
+  "latency_p50_ms": 0.0235,
+  "latency_p95_ms": 0.10845000000000005,
+  "cost_per_1k_usd": 0.0,
+  "temperature": 0.0,
+  "token_count_method": "whitespace",
+  "exact_match_definition": "whitespace_normalized_string",
+  "execution_definition": "test_suite_bag_semantics",
+  "difficulty": {
+    "easy": {
+      "n": 14,
+      "execution_accuracy": 0.7857142857142857
+    },
+    "hard": {
+      "n": 2,
+      "execution_accuracy": 0.0
+    },
+    "medium": {
+      "n": 4,
+      "execution_accuracy": 0.0
+    }
+  }
+}

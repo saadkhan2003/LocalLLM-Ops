@@ -1,0 +1,21 @@
+groups:
+  - name: localllm
+    rules:
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, sum(rate(localllm_sql_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Gateway SQL p95 latency is above 2 seconds
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(localllm_sql_requests_total{status="error"}[5m]))
+          /
+          clamp_min(sum(rate(localllm_sql_requests_total[5m])), 1e-9)
+          > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: SQL gateway error rate is above 2 percent

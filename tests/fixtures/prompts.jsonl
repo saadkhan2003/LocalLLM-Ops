@@ -1,0 +1,2 @@
+{"db_id": "school", "schema": "Table students\n  id INTEGER primary key\n  name TEXT", "question": "How many students are there?", "gold_sql": "SELECT COUNT(*) FROM students"}
+{"db_id": "school", "schema": "Table students\n  id INTEGER primary key\n  name TEXT", "question": "What are the names of the students?", "gold_sql": "SELECT name FROM students"}

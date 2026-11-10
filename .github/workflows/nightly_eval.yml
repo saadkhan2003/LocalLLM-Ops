@@ -1,0 +1,37 @@
+name: Nightly eval
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install
+        run: uv sync --locked --extra dev
+      - name: Live regression check
+        env:
+          EVAL_ENDPOINT: ${{ secrets.EVAL_ENDPOINT }}
+          GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          VLLM_BASE_URL: ${{ secrets.VLLM_BASE_URL }}
+        run: |
+          if [ -z "$EVAL_ENDPOINT" ]; then
+            uv run python -m localllm.eval.regression
+            exit 0
+          fi
+          uv run python -m localllm.eval.harness \
+            --backend vllm \
+            --data data/spider/test.jsonl \
+            --database-dir data/spider/database \
+            --limit 100 \
+            --run-id nightly \
+            --out results/nightly
+          uv run python -m localllm.eval.regression \
+            --current results/nightly/nightly.summary.json \
+            --baseline results/baselines/live_ex.json \
+            --max-drop 0.03

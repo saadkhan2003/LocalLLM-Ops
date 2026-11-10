@@ -1,0 +1,2 @@
+run_id,backend,model,split,n,execution_accuracy,exact_match,invalid_sql_rate,latency_p50_ms,latency_p95_ms,cost_per_1k_usd,temperature,token_count_method
+ci-tiny,tiny,tiny-keyword-sql,test,20,0.55,0.55,0.0,0.0235,0.10845000000000005,0.0,0.0,whitespace

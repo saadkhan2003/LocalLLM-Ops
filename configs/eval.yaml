@@ -1,0 +1,8 @@
+backend: tiny
+split: test
+limit: 20
+temperature: 0
+timeout: 10
+fixture: true
+out: results/ci
+run_id: config-smoke
