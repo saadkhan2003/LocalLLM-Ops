@@ -17,6 +17,10 @@ The official repo's execution metric is: run gold and prediction on every SQLite
 
 The 5% validation holdout is shuffled with seed 42 after sorting, so a re-download does not reshuffle. The HF validation split is written to `test.jsonl` and is not concatenated into train.
 
+## Why exact match is low on the OpenRouter baselines
+
+The 10 Nov 2026 full test split (n=1,034, seed 42, temperature 0) scored GPT-4o-mini at execution accuracy 0.762 and GPT-5-mini (reasoning effort minimal) at 0.756. Exact match was 0.064 and 0.059. That column is whitespace-normalized string equality, so a query that returns the right rows with different SQL still scores 0. Execution accuracy is the number to quote. Cost came from OpenRouter `usage.cost`: $0.061 total ($0.059 per 1k) and $0.178 total ($0.172 per 1k). The per-row JSONL is not in git.
+
 ## Why `tiny` exists
 
 CI and the demo page have to run on CPU with no keys. `TinySqlModel` is a keyword-to-SQL function with a fixed execution accuracy on a 20-question fixture that this repo creates. It is named `tiny-keyword-sql` in the summary so it cannot be confused with Qwen. The README quality table does not include that score.

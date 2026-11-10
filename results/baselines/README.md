@@ -1,6 +1,6 @@
 # Baselines
 
-`live_ex.json` is created by you after the first full test-split run you trust.
+The OpenRouter full-split scores live in `results/final/`. `live_ex.json` is created by you after the first served-model run you trust. Do not copy the GPT-4o-mini score into that file. The nightly job compares a later vLLM sample with this file.
 
 ```json
 {"execution_accuracy": 0.0}

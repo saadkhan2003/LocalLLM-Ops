@@ -16,6 +16,7 @@ htmlcov/
 /results/runs/
 /results/ci/
 /results/loadtest*
+/results/final/*.jsonl
 .python-version
 /uploads/
 *.log

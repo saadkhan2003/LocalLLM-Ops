@@ -15,14 +15,21 @@ jobs:
         run: uv sync --locked --extra dev
       - name: Live regression check
         env:
+          # Served-model check only. OpenRouter baselines are already in results/final/.
           EVAL_ENDPOINT: ${{ secrets.EVAL_ENDPOINT }}
           GATEWAY_API_KEY: ${{ secrets.GATEWAY_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           VLLM_BASE_URL: ${{ secrets.VLLM_BASE_URL }}
         run: |
-          if [ -z "$EVAL_ENDPOINT" ]; then
+          if [ -z "$EVAL_ENDPOINT" ] && [ -z "$VLLM_BASE_URL" ]; then
             uv run python -m localllm.eval.regression
             exit 0
+          fi
+          if [ -z "$VLLM_BASE_URL" ]; then
+            export VLLM_BASE_URL="$EVAL_ENDPOINT"
+          fi
+          if [ ! -f data/spider/test.jsonl ] || [ ! -d data/spider/database ]; then
+            echo "Spider test split is not in this checkout. Run make data before a live nightly eval."
+            exit 1
           fi
           uv run python -m localllm.eval.harness \
             --backend vllm \

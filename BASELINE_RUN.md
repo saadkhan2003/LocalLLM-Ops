@@ -91,7 +91,7 @@ Outputs:
 - `results/final/<model>.jsonl`
 - `results/final/<model>.summary.json`
 
-A later run of the same model replaces that model's row. Other models in the CSV stay. The README quality table stays `pending` until you run `make results-table` on these files. Do not type scores in by hand.
+A later run of the same model replaces that model's row. Other models in the CSV stay. `make results-table` fills the README from `results/final/` and leaves Qwen pending when those rows are absent. The 10 Nov 2026 OpenRouter run is already in that directory. Do not commit the per-row JSONL. Do not type scores in by hand.
 
 Raise `--limit` and `--max-usd` only after the 20-row summary looks right. Omit `--limit` for the full 1,034-question test split, and keep a `--max-usd` you are willing to spend.
 

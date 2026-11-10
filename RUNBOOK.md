@@ -294,8 +294,12 @@ Restart the gateway. One `/v1/sql` call should show up as a trace with backend, 
 
 ## 12. Publish the numbers
 
-1. Copy summary numbers into `results/final/quality.csv`, `serving.csv`, and `cost.csv`.
-2. `make results-table` rewrites the README block between the HTML comments.
+The 10 Nov 2026 OpenRouter baselines are already in `results/final/` (`quality.csv`, `cost.csv`, and the two summary JSON files). Per-row JSONL stays out of git. `make results-table` rewrites the README block between the HTML comments and keeps Qwen, serving, and self-hosted cost pending.
+
+After the adapter eval and a serving run:
+
+1. Add those rows to `results/final/quality.csv`, `serving.csv`, and `cost.csv`. Keep the OpenRouter rows.
+2. `make results-table`
 3. Run `notebooks/analysis.ipynb` and commit the charts it writes.
 4. Update `NOTES.md` in your own words, including whether the one change you tried (rank, epochs, foreign keys, sample rows) helped.
 5. Model card on Hugging Face: data, license, metrics, limitations, contamination note.

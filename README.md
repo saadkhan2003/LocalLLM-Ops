@@ -54,7 +54,8 @@ Request path: client, FastAPI gateway, backend (`tiny`, `base`, `ft-lora`, `ft-a
 | + QLoRA | pending | pending | pending |  |
 | + LoRA, AWQ W4A16 | pending | pending | pending |  |
 | + LoRA, GGUF Q4_K_M | pending | pending | pending |  |
-| GPT-4o-mini (OpenRouter) | pending | pending | pending | OpenRouter list price, not a measured score |
+| GPT-4o-mini (OpenRouter) | 0.762 | 0.064 | 0.68% | measured 10 Nov 2026, OpenRouter, full test split, n=1034, seed 42, temperature 0, p50/p95 1103/1898 ms |
+| GPT-5-mini (OpenRouter) | 0.756 | 0.059 | 0.68% | measured 10 Nov 2026, OpenRouter, full test split, n=1034, seed 42, temperature 0, reasoning minimal, p50/p95 1182/2015 ms |
 
 ### Serving
 
@@ -72,31 +73,34 @@ Request path: client, FastAPI gateway, backend (`tiny`, `base`, `ft-lora`, `ft-a
 | Training GPU-hours | pending |
 | Training cost | pending |
 | Self-hosted cost per 1k queries | pending |
-| GPT-4o-mini cost per 1k queries | pending |
+| GPT-4o-mini cost per 1k queries | $0.059 (measured 10 Nov 2026, OpenRouter usage.cost, total $0.061, n=1034) |
+| GPT-5-mini cost per 1k queries | $0.172 (measured 10 Nov 2026, OpenRouter usage.cost, reasoning minimal, total $0.178, n=1034) |
 | Break-even requests/s | pending |
 
-Numbers stay `pending` until `results/final/*.csv` exists. Do not type measured scores by hand. Run `make results-table` after a real eval.
+Exact match is a whitespace-normalized string comparison, so it stays low when the SQL text differs and the query still returns the same rows. Execution accuracy is the main metric. Qwen, serving, and self-hosted cost stay `pending` until the trained adapter is evaluated. Per-row JSONL files are not committed.
 <!-- RESULTS:END -->
 
 Charts (tokens/s vs concurrency, p95 vs concurrency, quantization trade-off) are drawn by `notebooks/analysis.ipynb` after those CSVs exist. None are checked in.
 
 The CPU smoke test is a separate, real run. `make smoke-eval` scores a 20-question fixture with a keyword generator named `tiny-keyword-sql`. That score is not a Qwen result and is not copied into the table above. On the fixture run checked into `results/smoke/`, execution accuracy was 0.55 (11 of 20), exact match was 0.55, and the invalid-SQL rate was 0. Those three numbers are from executing the keyword SQL against the fixture databases, not from a neural model.
 
-### How cost will be computed
+### How cost is computed
 
-Self-hosted, at a measured throughput:
+The cost table uses measured OpenRouter `usage.cost` from the 10 Nov 2026 full test split: $0.059 per 1k queries for GPT-4o-mini ($0.061 total) and $0.172 per 1k for GPT-5-mini with reasoning effort minimal ($0.178 total). Those figures replace the earlier list-price placeholder.
+
+Self-hosted cost is still pending. When a serving run exists it is:
 
 ```text
 cost_per_1k = gpu_usd_per_hour / requests_per_second / 3600 * 1000
 ```
 
-OpenRouter, from the usage object on the response. `usage.cost` is the number that goes in the CSV. If that field is missing, the script sums `usage.cost_details` entries whose keys contain `cost`. The token price table is only the fallback, and the CSV records `cost_source`.
+If a response has no `usage.cost`, the baseline sums numeric `usage.cost_details` keys that contain `cost`. The token price table is only the fallback after that, and the CSV records `cost_source`:
 
 ```text
 cost = input_tokens / 1e6 * input_usd_per_million + output_tokens / 1e6 * output_usd_per_million
 ```
 
-Default list prices, checked 10 Nov 2026 for `openai/gpt-4o-mini`: $0.15 / 1M input tokens and $0.60 / 1M output tokens. Override with `OPENROUTER_INPUT_USD_PER_MILLION` and `OPENROUTER_OUTPUT_USD_PER_MILLION` if the price page has moved. The break-even rate is the throughput where the two formulas match. Fill it only from a measured requests/s and the GPU price you actually paid. Commands for the budgeted baseline are in `BASELINE_RUN.md`.
+Fallback list prices, checked 10 Nov 2026 for `openai/gpt-4o-mini`: $0.15 / 1M input tokens and $0.60 / 1M output tokens. Override with `OPENROUTER_INPUT_USD_PER_MILLION` and `OPENROUTER_OUTPUT_USD_PER_MILLION` if the price page has moved. The break-even rate is the throughput where self-hosted cost matches the measured OpenRouter cost. Fill it only from a measured requests/s and the GPU price you actually paid. Commands are in `BASELINE_RUN.md`.
 
 ## How to run locally
 
@@ -173,7 +177,7 @@ Fill the brackets from `results/final/` only.
 - Fine-tuned Qwen2.5-1.5B with LoRA/QLoRA on Spider text-to-SQL, raising execution accuracy from [X]% to [Y]% on the 1,034-question test set ([Z] points vs GPT-4o-mini).
 - Quantized the model to 4-bit AWQ and GGUF, cutting model size by [X]% and GPU memory by [Y]% with a [Z]-point accuracy change.
 - Served with vLLM on serverless GPUs; load-tested to [N] concurrent users at [X] tokens/s and p95 latency of [Y] s.
-- Built an evaluation harness and a nightly regression check; cost per 1k queries $[X] self-hosted vs $[Y] for GPT-4o-mini.
+- Built an evaluation harness and a nightly regression check; cost per 1k queries $[X] self-hosted vs $0.059 for GPT-4o-mini (measured 10 Nov 2026, n=1,034, OpenRouter `usage.cost`).
 
 Hugging Face model card: not published yet. Push the merged weights as `<you>/qwen2.5-1.5b-spider-sql` after the eval, with the license, the data split, the metrics, and the contamination note.
 

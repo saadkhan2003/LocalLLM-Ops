@@ -1,11 +1,12 @@
 # results/final
 
-Put measured CSV files here after a real GPU or OpenRouter run. `make results-table` reads them and rewrites the README block.
+Measured OpenRouter baselines from 10 Nov 2026 are checked in:
 
-Expected files, written by you from harness and load-test output (do not invent rows):
+- `quality.csv` — execution accuracy, exact match, invalid SQL percent, n=1034
+- `cost.csv` — total USD and USD per 1k from `usage.cost`
+- `openai-gpt-4o-mini.summary.json`
+- `openai-gpt-5-mini.summary.json` — reasoning effort `minimal`
 
-- `quality.csv` — one row per model: model, execution accuracy, exact match, invalid SQL percent, notes
-- `serving.csv` — disk, GPU memory, TTFT, end-to-end latency, tokens/s, cold start
-- `cost.csv` — training hours, training cost, cost per 1k queries, break-even rate
+`make results-table` rewrites the README block from these files. Qwen rows stay pending until a trained adapter is scored. Serving and self-hosted cost stay pending until a GPU serve run exists.
 
-Until those files exist, the README tables stay `pending`.
+Per-row `*.jsonl` files are gitignored. Do not add them.
