@@ -1,13 +1,39 @@
 # LocalLLM Ops
 
-Fine-tune a small Qwen model for text-to-SQL, then measure it, quantize it, and serve it.
+**Text-to-SQL evaluation, guarded API access, and a reproducible path to small-model fine-tuning and serving.**
 
-Live demo: not deployed yet. The local gateway is `make serve` (port 8747).
-Two-minute video: not recorded yet. The shot list is `docs/demo_script.md`.
+![Status: in development](https://img.shields.io/badge/status-in_development-orange)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Muhammad Saad Khan · applied AI / ML engineer portfolio project.
+LocalLLM Ops turns an English question and database schema into a SQLite query, validates the query, and optionally executes it read-only. It brings together data preparation, execution-based evaluation, measured API costs, a FastAPI gateway, and training/serving tooling for `Qwen/Qwen2.5-1.5B-Instruct`.
 
-A user sends an English question and a database schema. The service returns one SQLite query, checks that it is a single `SELECT`, and can run it read-only. The model path is `Qwen/Qwen2.5-1.5B-Instruct`, fine-tuned with LoRA and QLoRA on [Spider](https://yale-lily.github.io/spider), served with vLLM, compared with GPT-4o-mini on OpenRouter. This repository contains the code, tests, and deployment entrypoints. It does not contain measured model scores. Those cells stay `pending` until the GPU and API runs in `RUNBOOK.md` are done.
+The engineering question is practical: **when does a small, self-hosted SQL model become a useful alternative to a hosted API?** The repository implements the measurement and deployment path; the comparison is not complete yet.
+
+> **In development — not a finished model release.** Hosted GPT baselines are measured and committed. Qwen fine-tuning, quantized-model quality, GPU-serving benchmarks, and production deployment remain pending. There is no permanent public demo or published adapter yet.
+
+[Quick start](#quick-start) · [Results](#results) · [Architecture](#architecture) · [Runbook](RUNBOOK.md) · [Contributing](CONTRIBUTING.md)
+
+## What is implemented
+
+- **Reproducible data preparation:** Spider questions, schema extraction, fixed train/validation/evaluation splits, and official SQLite database download support.
+- **SQL execution evaluation:** compare predicted and reference query results, record invalid SQL, and report latency and cost alongside quality.
+- **Guarded API gateway:** optional API-key authentication, rate limiting, a single-`SELECT` allow-list, read-only execution, timeouts, and configurable backend fallback.
+- **Training workflows:** LoRA/QLoRA configurations, assistant-token-only supervision, Kaggle/Colab notebooks, and Modal entrypoints. GPU runs are not yet measured.
+- **Serving and quantization tooling:** vLLM command generation, Modal deployment configuration, AWQ recipes, and llama.cpp GGUF conversion scripts.
+- **Observability and checks:** structured logs, optional Langfuse traces, Prometheus/Grafana configuration, Locust scenarios, and regression-test workflows.
+
+## Project status
+
+| Area | Evidence / status |
+|---|---|
+| CPU checks | 48 tests passed; lint/format checks and both 20-example smoke evaluations passed on 11 Nov 2026 |
+| Hosted-model baselines | GPT-4o-mini and GPT-5-mini results committed under [`results/final/`](results/final/) |
+| Qwen training | Configurations and notebooks available; adapter training/evaluation pending |
+| Quantization and GPU serving | Tooling available; measured quality, memory, throughput, and cold-start results pending |
+| Public hosting and walkthrough | Not published; [demo script](docs/demo_script.md) available |
+
+Workflow definitions are included, but **GitHub Actions is currently disabled** for this repository. No green CI status is implied by the checks above.
 
 ## Architecture
 
@@ -40,9 +66,15 @@ flowchart TB
   V -. /metrics .-> P[Prometheus] --> GR[Grafana]
 ```
 
+The diagram includes the intended GPU training and serving paths; it does not represent a currently deployed model service.
+
 Request path: client, FastAPI gateway, backend (`tiny`, `base`, `ft-lora`, `ft-awq`, `ft-gguf`, or `gpt-4o-mini`), SQL allow-list (`sqlglot`), optional read-only SQLite execution. Every call is a structured log, and a Langfuse trace when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set.
 
 ## Results
+
+**Dataset convention:** the 1,034 public Spider development examples (Hugging Face's validation split) are called `test` inside this project. These are **not** the official hidden Spider test set. The 7,000 training examples are split into 6,650 training and 350 validation rows.
+
+The block below is generated from [`results/final/`](results/final/) by `make results-table`. Preserve its markers when editing. The two hosted-model rows come from the 10 Nov 2026 run; `pending` means no corresponding measurement is published.
 
 <!-- RESULTS:START -->
 ### Quality (Spider test split, 1,034 questions)
@@ -102,18 +134,39 @@ cost = input_tokens / 1e6 * input_usd_per_million + output_tokens / 1e6 * output
 
 Fallback list prices, checked 10 Nov 2026 for `openai/gpt-4o-mini`: $0.15 / 1M input tokens and $0.60 / 1M output tokens. Override with `OPENROUTER_INPUT_USD_PER_MILLION` and `OPENROUTER_OUTPUT_USD_PER_MILLION` if the price page has moved. The break-even rate is the throughput where self-hosted cost matches the measured OpenRouter cost. Fill it only from a measured requests/s and the GPU price you actually paid. Commands are in `BASELINE_RUN.md`.
 
-## How to run locally
+## Quick start
 
-Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Run these commands **inside GitHub Codespaces or another Linux cloud development environment** to avoid installing dependencies or models on your laptop. A local Linux environment is also supported if you choose to use one.
+
+Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), and GNU Make. No GPU or API key is needed for this CPU-only path. Open a Codespace from **Code → Codespaces → Create codespace on main**, or clone the repository in your cloud workspace:
 
 ```bash
-cp .env.example .env
-uv sync --extra dev
-make ci
-make serve
+git clone https://github.com/saadkhan2003/LocalLLM-Ops.git
+cd LocalLLM-Ops
 ```
 
-Gateway: [http://127.0.0.1:8747](http://127.0.0.1:8747). Auth is off until `GATEWAY_API_KEY` is set. Set it before the process is reachable beyond your machine.
+```bash
+uv sync --extra dev
+make ci
+uv run uvicorn localllm.gateway.app:app --host 127.0.0.1 --port 8747
+```
+
+Open port **8747** from the Codespaces Ports panel, keeping visibility **Private**. On a local environment, visit [http://127.0.0.1:8747](http://127.0.0.1:8747).
+
+From a second terminal in the same environment:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8747/healthz
+curl --fail-with-body http://127.0.0.1:8747/v1/sql \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"How many students are there?","db_id":"school","backend":"tiny","execute":true}'
+```
+
+`school` is a built-in fixture and `tiny` is a keyword-based test backend, **not a trained LLM**. This verifies the request/validation/execution path without downloading model weights or calling a paid service.
+
+`make serve` is an alternative development entrypoint, but binds to `0.0.0.0`. Authentication is disabled by default; set `GATEWAY_API_KEY` before exposing the process outside a private development environment. The gateway is not a substitute for database isolation or a production security review.
+
+### Development commands
 
 | Command | What it does | Needs |
 |---|---|---|
@@ -127,11 +180,26 @@ Gateway: [http://127.0.0.1:8747](http://127.0.0.1:8747). Auth is off until `GATE
 
 GPU training, quantization, vLLM, and the paid baseline are in `RUNBOOK.md`. They are not part of `make ci`.
 
-Spider questions come from `xlangai/spider` (CC BY-SA 4.0): 7,000 train and 1,034 validation. The validation split is the test set and is never trained on. Five percent of train is held out as `val` (6,650 / 350 when the train split is 7,000). `make data` downloads the official SQLite zip from the [Spider page](https://yale-lily.github.io/spider) into `data/spider/database/` and exits if any `db_id` has no file. That directory is gitignored. `make data-small` still builds prompts only.
+Spider questions come from [`xlangai/spider`](https://huggingface.co/datasets/xlangai/spider); check the dataset card and upstream terms before redistribution. The public validation/development split is evaluation-only in this project and is never used for training. `make data` downloads the official SQLite zip linked by the [Spider project](https://yale-lily.github.io/spider) into `data/spider/database/` and exits if any required `db_id` has no database file. Data and model artifacts stay out of Git. `make data-small` builds prompts only.
+
+### Configuration and secrets
+
+Use [`.env.example`](.env.example) as the variable reference. Prefer repository-selected Codespaces secrets for cloud development; never commit a populated `.env`.
+
+| Integration | Variables | Needed for the CPU quick start? |
+|---|---|---|
+| Gateway authentication | `GATEWAY_API_KEY` | No, while private; required before broader exposure |
+| Hosted baselines / fallback | `OPENROUTER_API_KEY` | No; real calls may be billed |
+| Model downloads / publication | `HF_TOKEN`, `HUGGING_FACE_HUB_TOKEN` | No; see notebook instructions |
+| Modal | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | No; deployment can incur GPU charges |
+| Langfuse | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | No |
+| Self-hosted inference | `VLLM_BASE_URL`, `LLAMACPP_BASE_URL` | No |
+
+For budget-limited paid baselines, use the explicit commands in [BASELINE_RUN.md](BASELINE_RUN.md). Training, quantization, and real serving are documented in [RUNBOOK.md](RUNBOOK.md). Free GPU quotas and provider prices can change; deployment files do not imply a funded or running service.
 
 ## Design decisions
 
-- **1.5B, not Qwen2.5-Coder.** Qwen2.5-1.5B-Instruct is small enough for a free T4 with QLoRA and for a cheap serve GPU. Qwen2.5-Coder has very likely seen Spider, so a fine-tuning gain would be hard to read. The 1.5B model card lists Apache 2.0. The 3B model uses a different Qwen license; confirm both on the model cards before you train the stretch model.
+- **A small instruct model first.** Qwen2.5-1.5B-Instruct is the target for the T4 QLoRA workflow. Fit, runtime, and quality still need to be measured on the selected hardware. Pretraining overlap with Spider cannot be ruled out; compare base and fine-tuned scores under the same protocol and check model licenses before redistribution.
 - **LoRA r=16, alpha=32, lr 2e-4.** A common starting point on the attention and MLP projections. The T4 config uses NF4 QLoRA, batch 1, gradient accumulation 16, sequence length 1,024, fp16. Loss is masked to the assistant SQL tokens (`assistant_only_loss`).
 - **AWQ via llm-compressor.** AutoAWQ is archived. The recipe is `AWQModifier` plus `QuantizationModifier`, scheme `W4A16_ASYM`, `lm_head` ignored. GGUF Q4_K_M and Q8_0 cover CPU serving through llama.cpp.
 - **Modal for serve, free T4 for the first train.** Modal scale-to-zero (`min_containers=0`, 120 second idle window, max 1 container) is the demo path. Kaggle or Colab is the $0 training path. Check the provider price page before a Modal run. On 10 Nov 2026, Modal listed T4 around $0.59/h and L4 around $0.80/h, plus CPU and memory, with a starter credit. Those numbers are a budget hint, not a result.
@@ -147,9 +215,16 @@ Spider questions come from `xlangai/spider` (CC BY-SA 4.0): 7,000 train and 1,03
 - The keyword backend (`tiny`) is a CPU stand-in for tests and the demo page. It is not a language model.
 - Difficulty labels on the 20-question fixture were assigned for that fixture. Official Spider hardness is not computed in the smoke test.
 
-## What I'd do next
+## Roadmap
 
-Preference optimization on the harness failures, the BIRD dataset, speculative decoding, and more than one LoRA on the same vLLM process.
+- [x] Implement data preparation, execution scoring, gateway safeguards, and CPU regression tests.
+- [x] Record hosted-model baseline quality and actual API costs.
+- [ ] Complete the Kaggle QLoRA run and publish adapter evaluation against the base model.
+- [ ] Measure AWQ/GGUF quality changes, artifact sizes, and GPU/CPU serving behavior.
+- [ ] Run controlled concurrency tests and calculate self-hosted cost from observed throughput.
+- [ ] Verify live observability, publish a model card, and record a walkthrough.
+
+These are completion milestones, not claims that a production model or hosted service is already available.
 
 ## Repository map
 
@@ -168,17 +243,16 @@ notebooks/               Kaggle, Colab, analysis
 .github/workflows/       lint, tests, smoke eval, image, nightly, Modal tag
 ```
 
-## CV line
+## Contributing and security
 
-Fill the brackets from `results/final/` only.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and evidence requirements. Report security concerns using [SECURITY.md](SECURITY.md); do not publish credentials, private database contents, or sensitive query logs in issues.
 
-**LocalLLM Ops — Fine-tuned and self-hosted text-to-SQL LLM** | Python, PyTorch, TRL/PEFT, vLLM, llm-compressor, llama.cpp, FastAPI, Modal, Locust, Langfuse, Prometheus, Grafana, GitHub Actions
+## License
 
-- Fine-tuned Qwen2.5-1.5B with LoRA/QLoRA on Spider text-to-SQL, raising execution accuracy from [X]% to [Y]% on the 1,034-question test set ([Z] points vs GPT-4o-mini).
-- Quantized the model to 4-bit AWQ and GGUF, cutting model size by [X]% and GPU memory by [Y]% with a [Z]-point accuracy change.
-- Served with vLLM on serverless GPUs; load-tested to [N] concurrent users at [X] tokens/s and p95 latency of [Y] s.
-- Built an evaluation harness and a nightly regression check; cost per 1k queries $[X] self-hosted vs $0.059 for GPT-4o-mini (measured 10 Nov 2026, n=1,034, OpenRouter `usage.cost`).
+Source code is distributed under the [MIT License](LICENSE). Dataset, model, and third-party dependency licenses apply separately. No trained adapter or merged-model release is currently included.
 
-Hugging Face model card: not published yet. Push the merged weights as `<you>/qwen2.5-1.5b-spider-sql` after the eval, with the license, the data split, the metrics, and the contamination note.
+## Author
 
-CI is `.github/workflows/ci.yml` (lint, unit tests, 20-example mocked eval, tiny-model smoke) on every push and pull request.
+Built by **[Muhammad Saad Khan](https://saad-khan.xyz)**, Applied AI Engineer and founder of **[Stack & Scale](https://stackandscale.org)**, a software house building web, mobile, desktop, AI-agent, and automation solutions.
+
+[GitHub](https://github.com/saadkhan2003) · [LinkedIn](https://www.linkedin.com/in/saadkhan2003/) · [Engineering notes](NOTES.md)
